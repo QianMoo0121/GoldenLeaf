@@ -1,6 +1,8 @@
 package org.dreeam.leaf.async.tracker;
 
+import ca.spottedleaf.moonrise.common.misc.NearbyPlayers;
 import ca.spottedleaf.moonrise.patches.chunk_system.level.entity.server.ServerEntityLookup;
+import it.unimi.dsi.fastutil.longs.Long2ReferenceOpenHashMap;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
@@ -45,8 +47,9 @@ public final class AsyncTracker {
         EntitySlice[] slices = entities.length <= THREADS * MIN_CHUNK ? slice.chunks(MIN_CHUNK) : slice.splitEvenly(THREADS);
         @SuppressWarnings("unchecked")
         Future<TrackerCtx>[] futures = new Future[slices.length];
+        Long2ReferenceOpenHashMap<NearbyPlayers.TrackedChunk> byChunk = world.moonrise$getNearbyPlayers().byChunk.clone();
         for (int i = 0; i < futures.length; i++) {
-            futures[i] = TRACKER_EXECUTOR.submitOrRun(new TrackerTask(world, slices[i]));
+            futures[i] = TRACKER_EXECUTOR.submitOrRun(new TrackerTask(world, slices[i], byChunk));
         }
         TRACKER_EXECUTOR.unpack();
         world.trackerTask = futures;

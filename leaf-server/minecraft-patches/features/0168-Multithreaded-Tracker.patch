@@ -28,28 +28,19 @@ However we still recommend to use those packet based NPC plugins,
 e.g. ZNPC Plus, Adyeshach, Fancy NPC, etc.
 
 diff --git a/ca/spottedleaf/moonrise/common/misc/NearbyPlayers.java b/ca/spottedleaf/moonrise/common/misc/NearbyPlayers.java
-index 1b8193587814225c2ef2c5d9e667436eb50ff6c5..2a2626e90836ae52a8a686b2040843c6644b6914 100644
+index 1b8193587814225c2ef2c5d9e667436eb50ff6c5..f0285e89516a8c3f0adb17bbad90b5453ceb9dbb 100644
 --- a/ca/spottedleaf/moonrise/common/misc/NearbyPlayers.java
 +++ b/ca/spottedleaf/moonrise/common/misc/NearbyPlayers.java
-@@ -60,7 +60,16 @@ public final class NearbyPlayers {
+@@ -60,7 +60,7 @@ public final class NearbyPlayers {
  
      private final ServerLevel world;
      private final Reference2ReferenceOpenHashMap<ServerPlayer, TrackedPlayer[]> players = new Reference2ReferenceOpenHashMap<>();
 -    private final Long2ReferenceOpenHashMap<TrackedChunk> byChunk = new Long2ReferenceOpenHashMap<>();
-+    // Leaf start - Multithreaded tracker
-+    private final it.unimi.dsi.fastutil.longs.Long2ReferenceMap<TrackedChunk> byChunk;
-+    {
-+        if (org.dreeam.leaf.config.modules.async.MultithreadedTracker.enabled) {
-+            byChunk = it.unimi.dsi.fastutil.longs.Long2ReferenceMaps.synchronize(new Long2ReferenceOpenHashMap<>());
-+        } else {
-+            byChunk = new Long2ReferenceOpenHashMap<>();
-+        }
-+    }
-+    // Leaf end - Multithreaded tracker
++    public final Long2ReferenceOpenHashMap<TrackedChunk> byChunk = new Long2ReferenceOpenHashMap<>(); // Leaf - Multithreaded tracker - private -> public
      private final Long2ReferenceOpenHashMap<ReferenceList<ServerPlayer>>[] directByChunk = new Long2ReferenceOpenHashMap[TOTAL_MAP_TYPES];
      {
          for (int i = 0; i < this.directByChunk.length; ++i) {
-@@ -164,6 +173,8 @@ public final class NearbyPlayers {
+@@ -164,6 +164,8 @@ public final class NearbyPlayers {
          private int nonEmptyLists;
          private long updateCount;
  
@@ -58,7 +49,7 @@ index 1b8193587814225c2ef2c5d9e667436eb50ff6c5..2a2626e90836ae52a8a686b2040843c6
          public TrackedChunk(final long chunkKey, final NearbyPlayers nearbyPlayers) {
              this.chunkKey = chunkKey;
              this.nearbyPlayers = nearbyPlayers;
-@@ -177,6 +188,12 @@ public final class NearbyPlayers {
+@@ -177,6 +179,12 @@ public final class NearbyPlayers {
              return this.updateCount;
          }
  
@@ -71,7 +62,7 @@ index 1b8193587814225c2ef2c5d9e667436eb50ff6c5..2a2626e90836ae52a8a686b2040843c6
          public ReferenceList<ServerPlayer> getPlayers(final NearbyMapType type) {
              return this.players[type.ordinal()];
          }
-@@ -185,6 +202,12 @@ public final class NearbyPlayers {
+@@ -185,6 +193,12 @@ public final class NearbyPlayers {
              ++this.updateCount;
  
              final int idx = type.ordinal();
@@ -84,7 +75,7 @@ index 1b8193587814225c2ef2c5d9e667436eb50ff6c5..2a2626e90836ae52a8a686b2040843c6
              final ReferenceList<ServerPlayer> list = this.players[idx];
              if (list == null) {
                  ++this.nonEmptyLists;
-@@ -203,6 +226,12 @@ public final class NearbyPlayers {
+@@ -203,6 +217,12 @@ public final class NearbyPlayers {
              ++this.updateCount;
  
              final int idx = type.ordinal();
@@ -138,7 +129,7 @@ index 9c0c99b936b4a82ebfe924866e53ec71f7bbe9ad..2ccff968cb2065d34fad4d27573f9e30
                  .add(
                      new ClientboundUpdateAttributesPacket.AttributeSnapshot(
 diff --git a/net/minecraft/server/MinecraftServer.java b/net/minecraft/server/MinecraftServer.java
-index 07943aa3be4222ab7a63b09a6625f7a003da8725..6c1a8925b1e13a0ebddc1b45a980fe8bdd8676cf 100644
+index efb281f71ef5404fa40b7d04104b1c15d14e2c05..90409e9ef5cac2abe6748b723207c33224821194 100644
 --- a/net/minecraft/server/MinecraftServer.java
 +++ b/net/minecraft/server/MinecraftServer.java
 @@ -1732,6 +1732,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
@@ -1180,7 +1171,7 @@ index 0dee18df07c979da6125a4e7a955343e44d67ac2..dae07c6c31949c75c810c9260232cccc
          if (this.entity instanceof ServerPlayer) {
              ((ServerPlayer)this.entity).connection.send(packet);
 diff --git a/net/minecraft/server/level/ServerLevel.java b/net/minecraft/server/level/ServerLevel.java
-index 08d12a1acc3a672a77daa15f82392cd603c30283..b0ac6de9e0f15d234781fc43dd6fd1d5cd6c5ddf 100644
+index 08d12a1acc3a672a77daa15f82392cd603c30283..353d96002ee20b4f77395cec6d3c7a1e35495884 100644
 --- a/net/minecraft/server/level/ServerLevel.java
 +++ b/net/minecraft/server/level/ServerLevel.java
 @@ -216,6 +216,7 @@ public class ServerLevel extends Level implements ServerEntityGetter, WorldGenLe
@@ -1208,17 +1199,8 @@ index 08d12a1acc3a672a77daa15f82392cd603c30283..b0ac6de9e0f15d234781fc43dd6fd1d5
          return this.moonrise$getEntityLookup(); // Paper - rewrite chunk system
      }
  
-@@ -2799,7 +2801,7 @@ public class ServerLevel extends Level implements ServerEntityGetter, WorldGenLe
-                         }
- 
-                         map.carriedByPlayers.remove(player);
--                        if (map.carriedBy.removeIf(holdingPlayer -> holdingPlayer.player == player)) {
-+                        if (map.carriedBy.removeIf(holdingPlayer -> holdingPlayer != null && holdingPlayer.player == player)) { // Leaf - Multithreaded tracker
-                             map.decorations.remove(player.getName().getString());
-                         }
-                     }
 diff --git a/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
-index f70ad292afd21c534369f34d465c00591c71fc7a..0f95b746f5d728f923b1b558b584e2e1becf16eb 100644
+index 1556b2d4a758e3a15b6c4468bf994ea3781a4958..581791bf2892715543f003c36e301e690cc393f1 100644
 --- a/net/minecraft/server/network/ServerGamePacketListenerImpl.java
 +++ b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
 @@ -1928,7 +1928,7 @@ public class ServerGamePacketListenerImpl
