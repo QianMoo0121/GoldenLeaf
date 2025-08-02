@@ -1333,7 +1333,7 @@ index 42ad600c6a5cb20e1d820f169f6a1a17ef3a5195..7f8eb388308806008805970d4d8ed329
  
      public void apply(AttributeInstance.Packed instance) {
 diff --git a/net/minecraft/world/entity/ai/attributes/AttributeMap.java b/net/minecraft/world/entity/ai/attributes/AttributeMap.java
-index 0ac398b8b10aae5e67a797b2991c66874003f282..d62c2644847173de8e11296508f111e786a95091 100644
+index 0ac398b8b10aae5e67a797b2991c66874003f282..87a8be1dfb1bcd042fb93bf9008fa77f81543b43 100644
 --- a/net/minecraft/world/entity/ai/attributes/AttributeMap.java
 +++ b/net/minecraft/world/entity/ai/attributes/AttributeMap.java
 @@ -15,9 +15,11 @@ import net.minecraft.resources.ResourceLocation;
@@ -1351,7 +1351,7 @@ index 0ac398b8b10aae5e67a797b2991c66874003f282..d62c2644847173de8e11296508f111e7
      // Gale end - Lithium - replace AI attributes with optimized collections
      private final AttributeSupplier supplier;
      private final net.minecraft.world.entity.LivingEntity entity; // Purpur - Ridables
-@@ -32,28 +34,51 @@ public class AttributeMap {
+@@ -32,20 +34,36 @@ public class AttributeMap {
          this.supplier = defaultAttributes;
      }
  
@@ -1368,29 +1368,32 @@ index 0ac398b8b10aae5e67a797b2991c66874003f282..d62c2644847173de8e11296508f111e7
 -        return this.attributesToSync;
 +    private static final AttributeInstance[] EMPTY_ATTRIBUTE_INSTANCE = new AttributeInstance[0];
 +    public synchronized Set<AttributeInstance> getAttributesToSync() {
++        if (attributesToSync.isEmpty()) {
++            return Set.of();
++        }
 +        var clone = it.unimi.dsi.fastutil.objects.ReferenceArraySet.ofUnchecked(attributesToSync.toArray(EMPTY_ATTRIBUTE_INSTANCE));
 +        this.attributesToSync.clear();
 +        return clone;
-     }
- 
--    public Set<AttributeInstance> getAttributesToUpdate() {
--        return this.attributesToUpdate;
++    }
++
 +    public synchronized Set<AttributeInstance> getAttributesToUpdate() {
 +        var clone = it.unimi.dsi.fastutil.objects.ReferenceArraySet.ofUnchecked(attributesToUpdate.toArray(EMPTY_ATTRIBUTE_INSTANCE));
 +        this.attributesToUpdate.clear();
 +        return clone;
      }
  
+-    public Set<AttributeInstance> getAttributesToUpdate() {
+-        return this.attributesToUpdate;
 +    public synchronized int[] getAttributesToUpdateIds() {
 +        int[] clone = attributesToUpdate.inner.toIntArray();
 +        this.attributesToUpdate.clear();
 +        return clone;
-+    }
+     }
 +    // Leaf end - Multithreaded tracker
-+
+ 
      public Collection<AttributeInstance> getSyncableAttributes() {
          return this.attributes.values().stream().filter(instance -> instance.getAttribute().value().isClientSyncable() && (entity == null || entity.shouldSendAttribute(instance.getAttribute().value()))).collect(Collectors.toList()); // Purpur - Ridables
-     }
+@@ -53,7 +71,17 @@ public class AttributeMap {
  
      @Nullable
      public AttributeInstance getInstance(Holder<Attribute> attribute) {
