@@ -5,10 +5,10 @@ Subject: [PATCH] Optimize addOrUpdateTransientModifier
 
 
 diff --git a/net/minecraft/world/entity/ai/attributes/AttributeInstance.java b/net/minecraft/world/entity/ai/attributes/AttributeInstance.java
-index 7f8eb388308806008805970d4d8ed329440380ee..7f1b670eab23c02fb0f27cfa5ca0d0113794c8eb 100644
+index e4241cc11ac256a6d759c2aebbf9b0f6cfd63fe0..22fa1abe8a41e4eec18c9eb8f3d86283430a3db5 100644
 --- a/net/minecraft/world/entity/ai/attributes/AttributeInstance.java
 +++ b/net/minecraft/world/entity/ai/attributes/AttributeInstance.java
-@@ -105,8 +105,13 @@ public class AttributeInstance {
+@@ -88,8 +88,13 @@ public class AttributeInstance {
      }
  
      public void addOrUpdateTransientModifier(AttributeModifier modifier) {

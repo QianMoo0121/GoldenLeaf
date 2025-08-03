@@ -6,10 +6,9 @@ import io.papermc.paper.event.player.PlayerUntrackEntityEvent;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.Reference2ReferenceOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ReferenceArrayList;
+import net.minecraft.core.Holder;
 import net.minecraft.network.protocol.Packet;
-import net.minecraft.network.protocol.game.ClientGamePacketListener;
-import net.minecraft.network.protocol.game.ClientboundRemoveEntitiesPacket;
-import net.minecraft.network.protocol.game.ClientboundSetEntityMotionPacket;
+import net.minecraft.network.protocol.game.*;
 import net.minecraft.server.level.ChunkMap;
 import net.minecraft.server.level.FullChunkStatus;
 import net.minecraft.server.level.ServerLevel;
@@ -17,6 +16,11 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.ServerGamePacketListenerImpl;
 import net.minecraft.server.network.ServerPlayerConnection;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.ai.attributes.Attribute;
+import net.minecraft.world.entity.ai.attributes.AttributeInstance;
+import net.minecraft.world.entity.ai.attributes.AttributeMap;
+import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.boss.wither.WitherBoss;
 import net.minecraft.world.entity.decoration.ItemFrame;
 import net.minecraft.world.item.ItemStack;
@@ -24,20 +28,26 @@ import net.minecraft.world.item.MapItem;
 import net.minecraft.world.level.saveddata.maps.MapId;
 import net.minecraft.world.level.saveddata.maps.MapItemSavedData;
 import org.bukkit.event.player.PlayerVelocityEvent;
+import org.dreeam.leaf.util.map.AttributeInstanceArrayMap;
+
+import java.util.List;
+import java.util.Set;
 
 public final class TrackerCtx {
     private final Reference2ReferenceOpenHashMap<ServerPlayerConnection, ReferenceArrayList<Packet<? super ClientGamePacketListener>>> packets;
     private final ServerLevel world;
-    private final ObjectArrayList<ServerPlayer> bukkitVelocityEvent = new ObjectArrayList<>();
+    private final ObjectArrayList<ServerPlayer> playerVelocity = new ObjectArrayList<>();
     private final ObjectArrayList<ItemFrame> bukkitItemFrames = new ObjectArrayList<>();
     private final ObjectArrayList<BossEvent> witherBosses = new ObjectArrayList<>();
     private final ObjectArrayList<PaperStopSeen> paperStopSeen = new ObjectArrayList<>();
     private final ObjectArrayList<PaperStartSeen> paperStartSeen = new ObjectArrayList<>();
     private final ObjectArrayList<Entity> pluginEntity = new ObjectArrayList<>();
+    private final ReferenceArrayList<SyncAttributes> syncAttributes = ReferenceArrayList.wrap(new SyncAttributes[8], 0);
 
     private record BossEvent(WitherBoss witherBoss, ObjectArrayList<ServerPlayer> add, ObjectArrayList<ServerPlayer> remove) {}
     private record PaperStopSeen(Entity e, ObjectArrayList<ServerPlayerConnection> q) {}
     private record PaperStartSeen(Entity e, ObjectArrayList<ServerPlayerConnection> q) {}
+    private record SyncAttributes(LivingEntity e, ServerPlayerConnection[] seenBy) {}
 
     public TrackerCtx(ServerLevel world) {
         this.packets = new Reference2ReferenceOpenHashMap<>();
@@ -66,15 +76,13 @@ public final class TrackerCtx {
     }
 
     public void startSeenByPlayer(ServerPlayerConnection connection, Entity entity) {
-        if (PlayerTrackEntityEvent.getHandlerList().getRegisteredListeners().length != 0) {
-            if (paperStartSeen.isEmpty()) {
-                paperStartSeen.add(new PaperStartSeen(entity, new ObjectArrayList<>()));
-            }
-            if (!paperStartSeen.getLast().e.equals(entity)) {
-                paperStartSeen.add(new PaperStartSeen(entity, new ObjectArrayList<>()));
-            }
-            paperStartSeen.getLast().q.add(connection);
+        if (paperStartSeen.isEmpty()) {
+            paperStartSeen.add(new PaperStartSeen(entity, new ObjectArrayList<>()));
         }
+        if (!paperStartSeen.getLast().e.equals(entity)) {
+            paperStartSeen.add(new PaperStartSeen(entity, new ObjectArrayList<>()));
+        }
+        paperStartSeen.getLast().q.add(connection);
         if (entity instanceof WitherBoss witherBoss) {
             if (witherBosses.isEmpty()) {
                 witherBosses.add(new BossEvent(witherBoss, new ObjectArrayList<>(), new ObjectArrayList<>()));
@@ -86,24 +94,29 @@ public final class TrackerCtx {
         }
     }
 
+    public void syncAttributes(LivingEntity livingEntity, ServerPlayerConnection[] seenBy) {
+        syncAttributes.add(new SyncAttributes(livingEntity, seenBy));
+    }
+
     public void updateItemFrame(ItemFrame itemFrame) {
         bukkitItemFrames.add(itemFrame);
     }
 
     public void playerVelocity(ServerPlayer player) {
-        bukkitVelocityEvent.add(player);
+        playerVelocity.add(player);
     }
 
     public void citizensEntity(Entity entity) {
         pluginEntity.add(entity);
     }
 
+    @SuppressWarnings("unchecked")
     public void send(ServerPlayerConnection connection, Packet<? super ClientGamePacketListener> packet) {
-        packets.computeIfAbsent(connection, x -> ReferenceArrayList.wrap(new Packet[16])).add(packet);
+        packets.computeIfAbsent(connection, x -> ReferenceArrayList.wrap(new Packet[16], 0)).add(packet);
     }
 
     void join(TrackerCtx other) {
-        bukkitVelocityEvent.addAll(other.bukkitVelocityEvent);
+        playerVelocity.addAll(other.playerVelocity);
         bukkitItemFrames.addAll(other.bukkitItemFrames);
         paperStopSeen.addAll(other.paperStopSeen);
         paperStartSeen.addAll(other.paperStartSeen);
@@ -114,107 +127,21 @@ public final class TrackerCtx {
         var iterator = other.packets.reference2ReferenceEntrySet().fastIterator();
         while (iterator.hasNext()) {
             var entry = iterator.next();
+            //noinspection unchecked
             packets.computeIfAbsent(entry.getKey(), x -> ReferenceArrayList.wrap(new Packet[0])).addAll(entry.getValue());
         }
     }
 
     void handle(boolean flush) {
-        handlePackets(world, packets, flush);
-
         if (!pluginEntity.isEmpty()) {
-            for (final Entity entity : pluginEntity) {
-                final ChunkMap.TrackedEntity tracker = ((ca.spottedleaf.moonrise.patches.entity_tracker.EntityTrackerEntity)entity).moonrise$getTrackedEntity();
-                if (tracker == null) {
-                    continue;
-                }
-                NearbyPlayers.TrackedChunk trackedChunk = world.moonrise$getNearbyPlayers().getChunk(entity.chunkPosition());
-                tracker.leafTick(this, trackedChunk);
-                boolean flag = false;
-                if (tracker.moonrise$hasPlayers()) {
-                    flag = true;
-                } else {
-                    FullChunkStatus status = ((ca.spottedleaf.moonrise.patches.chunk_system.entity.ChunkSystemEntity) entity).moonrise$getChunkStatus();
-                    if (status != null && status.isOrAfter(FullChunkStatus.ENTITY_TICKING)) {
-                        flag = true;
-                    }
-                }
-                if (flag) {
-                    tracker.serverEntity.leafSendChanges(this, tracker);
-                }
+            for (Entity entity : pluginEntity) {
+                handlePluginEntity(entity);
             }
-            pluginEntity.clear();
-        }
-        if (!bukkitVelocityEvent.isEmpty()) {
-            for (ServerPlayer player : bukkitVelocityEvent) {
-                if (!world.equals(player.level())) {
-                    continue;
-                }
-                boolean cancelled = false;
-
-                org.bukkit.entity.Player player1 = player.getBukkitEntity();
-                org.bukkit.util.Vector velocity = player1.getVelocity();
-
-                PlayerVelocityEvent event = new PlayerVelocityEvent(player1, velocity.clone());
-                if (!event.callEvent()) {
-                    cancelled = true;
-                } else if (!velocity.equals(event.getVelocity())) {
-                    player1.setVelocity(event.getVelocity());
-                }
-                if (!cancelled) {
-                    player.hurtMarked = false;
-                    ChunkMap.TrackedEntity trackedEntity = player.moonrise$getTrackedEntity();
-                    trackedEntity.leafBroadcastAndSend(this, new ClientboundSetEntityMotionPacket(player));
-                }
-            }
-            bukkitVelocityEvent.clear();
-        }
-        if (!bukkitItemFrames.isEmpty()) {
-            for (ItemFrame itemFrame : bukkitItemFrames) {
-                MapId mapId = itemFrame.cachedMapId; // Paper - Perf: Cache map ids on item frames
-                MapItemSavedData savedData = MapItem.getSavedData(mapId, world);
-                if (savedData != null) {
-                    ChunkMap.TrackedEntity trackedEntity = itemFrame.moonrise$getTrackedEntity();
-                    if (trackedEntity != null) {
-                        ItemStack item = itemFrame.getItem();
-                        for (final net.minecraft.server.network.ServerPlayerConnection connection : trackedEntity.seenBy()) {
-                            final ServerPlayer serverPlayer = connection.getPlayer(); // Paper
-                            savedData.tickCarriedBy(serverPlayer, item);
-                            Packet<? super ClientGamePacketListener> updatePacket = (Packet<? super ClientGamePacketListener>) savedData.getUpdatePacket(mapId, serverPlayer);
-                            if (updatePacket != null) {
-                                send(serverPlayer.connection, updatePacket);
-                            }
-                        }
-                    }
-                }
-            }
-            bukkitItemFrames.clear();
-        }
-        if (!witherBosses.isEmpty()) {
-            for (BossEvent witherBoss : witherBosses) {
-                for (ServerPlayer player : witherBoss.add) {
-                    if (!world.equals(player.level())) {
-                        continue;
-                    }
-                    witherBoss.witherBoss.bossEvent.leafAddPlayer(this, player);
-                }
-                for (ServerPlayer player : witherBoss.remove) {
-                    witherBoss.witherBoss.bossEvent.leafRemovePlayer(this, player);
-                }
-            }
-            witherBosses.clear();
         }
         if (!paperStartSeen.isEmpty()) {
             for (PaperStartSeen startSeen : paperStartSeen) {
-                for (ServerPlayerConnection connection : startSeen.q) {
-                    if (!new PlayerTrackEntityEvent(
-                        connection.getPlayer().getBukkitEntity(),
-                        startSeen.e.getBukkitEntity()
-                    ).callEvent()) {
-                        send(connection, new ClientboundRemoveEntitiesPacket(startSeen.e.getId()));
-                    }
-                }
+                handleStartTrack(startSeen);
             }
-            paperStartSeen.clear();
         }
         if (!paperStopSeen.isEmpty()) {
             for (PaperStopSeen stopSeen : paperStopSeen) {
@@ -225,10 +152,170 @@ public final class TrackerCtx {
                     ).callEvent();
                 }
             }
-            paperStopSeen.clear();
         }
 
         handlePackets(world, packets, flush);
+
+        SyncAttributes[] raw = syncAttributes.elements();
+        for (int i = 0, size = syncAttributes.size(); i < size; i++) {
+            handleSyncAttribute(raw[i]);
+        }
+        if (!playerVelocity.isEmpty()) {
+            for (ServerPlayer player : playerVelocity) {
+                handlePlayerVelocity(player);
+            }
+        }
+        if (!bukkitItemFrames.isEmpty()) {
+            for (ItemFrame itemFrame : bukkitItemFrames) {
+                handleItemFrame(itemFrame);
+            }
+        }
+        if (!witherBosses.isEmpty()) {
+            for (BossEvent witherBoss : witherBosses) {
+                handleWitherBoss(witherBoss);
+            }
+        }
+
+        handlePackets(world, packets, flush);
+    }
+
+    private void handleSyncAttribute(SyncAttributes syncAttribute) {
+        LivingEntity e = syncAttribute.e;
+        ObjectArrayList<ClientboundUpdateAttributesPacket.AttributeSnapshot> attributes;
+        AttributeMap attributeMap = e.getAttributes();
+        ServerPlayer p = e instanceof ServerPlayer serverPlayer ? serverPlayer : null;
+        if (attributeMap.attributes instanceof AttributeInstanceArrayMap map) {
+            int[] ids = attributeMap.getAttributesToSyncIds();
+            attributes = new ObjectArrayList<>(ids.length);
+            for (int attributeIdx : ids) {
+                AttributeInstance attributeInstance = map.getInstance(attributeIdx);
+                if (attributeInstance == null) continue;
+                Holder<Attribute> attribute = attributeInstance.getAttribute();
+                if (p != null && attribute == Attributes.MAX_HEALTH) {
+                    attributeInstance = p.getBukkitEntity().getScaledMaxHealth();
+                }
+                attributes.add(new ClientboundUpdateAttributesPacket.AttributeSnapshot(attribute, attributeInstance.getBaseValue(), attributeInstance.getModifiers()));
+            }
+        } else {
+            Set<AttributeInstance> toSync = attributeMap.getAttributesToSync();
+            attributes = new ObjectArrayList<>(toSync.size());
+            for (AttributeInstance attributeInstance : toSync) {
+                if (attributeInstance == null) continue;
+                Holder<Attribute> attribute = attributeInstance.getAttribute();
+                if (p != null && attribute == Attributes.MAX_HEALTH) {
+                    attributeInstance = p.getBukkitEntity().getScaledMaxHealth();
+                }
+                attributes.add(new ClientboundUpdateAttributesPacket.AttributeSnapshot(attribute, attributeInstance.getBaseValue(), attributeInstance.getModifiers()));
+            }
+        }
+        ClientboundUpdateAttributesPacket packet = new ClientboundUpdateAttributesPacket(e.getId(), attributes);
+        for (ServerPlayerConnection connection : syncAttribute.seenBy) {
+            send(connection, packet);
+        }
+        if (p != null) {
+            send(p.connection, packet);
+        }
+    }
+
+    private void handleStartTrack(PaperStartSeen startSeen) {
+        ObjectArrayList<Packet<? super ClientGamePacketListener>> list = new ObjectArrayList<>();
+        ChunkMap.TrackedEntity trackedEntity = startSeen.e.moonrise$getTrackedEntity();
+        if (trackedEntity != null) {
+            boolean flag = trackedEntity.serverEntity.leafSendPairingData(list);
+            ClientboundBundlePacket packet = new ClientboundBundlePacket(list);
+            for (ServerPlayerConnection connection : startSeen.q) {
+                if (PlayerTrackEntityEvent.getHandlerList().getRegisteredListeners().length != 0
+                    && !new PlayerTrackEntityEvent(
+                    connection.getPlayer().getBukkitEntity(),
+                    startSeen.e.getBukkitEntity()
+                ).callEvent()) {
+                    send(connection, new ClientboundRemoveEntitiesPacket(startSeen.e.getId()));
+                } else {
+                    if (flag && connection.getPlayer() == startSeen.e) {
+                        var copy = new ObjectArrayList<>(list);
+                        copy.add(new ClientboundUpdateAttributesPacket(startSeen.e.getId(), List.of(connection.getPlayer().getBukkitEntity().getScaledMaxHealth())));
+                        send(connection, new ClientboundBundlePacket(copy));
+                    } else {
+                        send(connection, packet);
+                    }
+                }
+            }
+        }
+    }
+
+    private void handlePluginEntity(Entity entity) {
+        final ChunkMap.TrackedEntity tracker = ((ca.spottedleaf.moonrise.patches.entity_tracker.EntityTrackerEntity) entity).moonrise$getTrackedEntity();
+        if (tracker == null) {
+            return;
+        }
+        NearbyPlayers.TrackedChunk trackedChunk = world.moonrise$getNearbyPlayers().getChunk(entity.chunkPosition());
+        tracker.leafTick(this, trackedChunk);
+        boolean flag = false;
+        if (tracker.moonrise$hasPlayers()) {
+            flag = true;
+        } else {
+            FullChunkStatus status = ((ca.spottedleaf.moonrise.patches.chunk_system.entity.ChunkSystemEntity) entity).moonrise$getChunkStatus();
+            if (status != null && status.isOrAfter(FullChunkStatus.ENTITY_TICKING)) {
+                flag = true;
+            }
+        }
+        if (flag) {
+            tracker.serverEntity.leafSendChanges(this, tracker);
+        }
+    }
+
+    private void handlePlayerVelocity(ServerPlayer player) {
+        if (!world.equals(player.level())) {
+            return;
+        }
+        boolean cancelled = false;
+
+        org.bukkit.entity.Player player1 = player.getBukkitEntity();
+        org.bukkit.util.Vector velocity = player1.getVelocity();
+
+        PlayerVelocityEvent event = new PlayerVelocityEvent(player1, velocity.clone());
+        if (!event.callEvent()) {
+            cancelled = true;
+        } else if (!velocity.equals(event.getVelocity())) {
+            player1.setVelocity(event.getVelocity());
+        }
+        if (!cancelled) {
+            player.hurtMarked = false;
+            ChunkMap.TrackedEntity trackedEntity = player.moonrise$getTrackedEntity();
+            trackedEntity.leafBroadcastAndSend(this, new ClientboundSetEntityMotionPacket(player));
+        }
+    }
+
+    private void handleItemFrame(ItemFrame itemFrame) {
+        MapId mapId = itemFrame.cachedMapId; // Paper - Perf: Cache map ids on item frames
+        MapItemSavedData savedData = MapItem.getSavedData(mapId, world);
+        if (savedData != null) {
+            ChunkMap.TrackedEntity trackedEntity = itemFrame.moonrise$getTrackedEntity();
+            if (trackedEntity != null) {
+                ItemStack item = itemFrame.getItem();
+                for (final ServerPlayerConnection connection : trackedEntity.seenBy()) {
+                    final ServerPlayer serverPlayer = connection.getPlayer(); // Paper
+                    savedData.tickCarriedBy(serverPlayer, item);
+                    //noinspection unchecked
+                    Packet<? super ClientGamePacketListener> updatePacket = (Packet<? super ClientGamePacketListener>) savedData.getUpdatePacket(mapId, serverPlayer);
+                    if (updatePacket != null) {
+                        send(serverPlayer.connection, updatePacket);
+                    }
+                }
+            }
+        }
+    }
+
+    private void handleWitherBoss(BossEvent witherBoss) {
+        for (ServerPlayer player : witherBoss.add) {
+            if (!world.equals(player.level())) {
+                continue;
+            }
+            witherBoss.witherBoss.bossEvent.leafAddPlayer(this, player);
+        }
+        for (ServerPlayer player : witherBoss.remove) {
+            witherBoss.witherBoss.bossEvent.leafRemovePlayer(this, player);
+        }
     }
 
     private static void handlePackets(ServerLevel world, Reference2ReferenceOpenHashMap<ServerPlayerConnection, ReferenceArrayList<Packet<? super ClientGamePacketListener>>> packets, boolean flush) {
@@ -243,7 +330,7 @@ public final class TrackerCtx {
             if (!world.equals(connection.getPlayer().level())) {
                 continue;
             }
-            Packet[] packetsRaw = list.elements();
+            Packet<? super ClientGamePacketListener>[] packetsRaw = list.elements();
             for (int i = 0, size = list.size(); i < size; i++) {
                 connection.send(packetsRaw[i]);
             }

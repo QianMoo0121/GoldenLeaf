@@ -6,10 +6,10 @@ Subject: [PATCH] Fix Paper config fixClimbingBypassingCrammingRule
 Waiting for Paper#12793
 
 diff --git a/net/minecraft/world/entity/LivingEntity.java b/net/minecraft/world/entity/LivingEntity.java
-index d745fd544263b364c1880220c076be41f269a8b7..a55b1534dc3c0745ff569f5c1e07dbeaba0fe57d 100644
+index 718adad127a9e674f7a3fdbf09920397ca19beef..e4f04a08ac550d6d536c08164635070d5db639d2 100644
 --- a/net/minecraft/world/entity/LivingEntity.java
 +++ b/net/minecraft/world/entity/LivingEntity.java
-@@ -3850,7 +3850,7 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+@@ -3851,7 +3851,7 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
          // Leaf start - Only player pushable
          final AABB box = this.getBoundingBox();
          List<Entity> pushableEntities = org.dreeam.leaf.config.modules.gameplay.OnlyPlayerPushable.enabled
