@@ -1,6 +1,8 @@
 package org.dreeam.leaf.async.tracker;
 
 import ca.spottedleaf.moonrise.common.misc.NearbyPlayers;
+import ca.spottedleaf.moonrise.patches.chunk_system.entity.ChunkSystemEntity;
+import ca.spottedleaf.moonrise.patches.entity_tracker.EntityTrackerEntity;
 import io.papermc.paper.event.player.PlayerTrackEntityEvent;
 import io.papermc.paper.event.player.PlayerUntrackEntityEvent;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
@@ -154,7 +156,7 @@ public final class TrackerCtx {
             }
         }
 
-        handlePackets(world, packets, flush);
+        sendPackets(world, packets, flush);
 
         SyncAttributes[] raw = syncAttributes.elements();
         for (int i = 0, size = syncAttributes.size(); i < size; i++) {
@@ -176,7 +178,7 @@ public final class TrackerCtx {
             }
         }
 
-        handlePackets(world, packets, flush);
+        sendPackets(world, packets, flush);
     }
 
     private void handleSyncAttribute(SyncAttributes syncAttribute) {
@@ -244,23 +246,22 @@ public final class TrackerCtx {
     }
 
     private void handlePluginEntity(Entity entity) {
-        final ChunkMap.TrackedEntity tracker = ((ca.spottedleaf.moonrise.patches.entity_tracker.EntityTrackerEntity) entity).moonrise$getTrackedEntity();
+        final ChunkMap.TrackedEntity tracker = ((EntityTrackerEntity) entity).moonrise$getTrackedEntity();
         if (tracker == null) {
             return;
         }
-        NearbyPlayers.TrackedChunk trackedChunk = world.moonrise$getNearbyPlayers().getChunk(entity.chunkPosition());
-        tracker.leafTick(this, trackedChunk);
+        tracker.moonrise$tick(((ChunkSystemEntity) entity).moonrise$getChunkData().nearbyPlayers);
         boolean flag = false;
         if (tracker.moonrise$hasPlayers()) {
             flag = true;
         } else {
-            FullChunkStatus status = ((ca.spottedleaf.moonrise.patches.chunk_system.entity.ChunkSystemEntity) entity).moonrise$getChunkStatus();
+            FullChunkStatus status = ((ChunkSystemEntity) entity).moonrise$getChunkStatus();
             if (status != null && status.isOrAfter(FullChunkStatus.ENTITY_TICKING)) {
                 flag = true;
             }
         }
         if (flag) {
-            tracker.serverEntity.leafSendChanges(this, tracker);
+            tracker.serverEntity.sendChanges();
         }
     }
 
@@ -318,7 +319,7 @@ public final class TrackerCtx {
         }
     }
 
-    private static void handlePackets(ServerLevel world, Reference2ReferenceOpenHashMap<ServerPlayerConnection, ReferenceArrayList<Packet<? super ClientGamePacketListener>>> packets, boolean flush) {
+    private static void sendPackets(ServerLevel world, Reference2ReferenceOpenHashMap<ServerPlayerConnection, ReferenceArrayList<Packet<? super ClientGamePacketListener>>> packets, boolean flushChannel) {
         if (packets.isEmpty()) {
             return;
         }
@@ -334,7 +335,7 @@ public final class TrackerCtx {
             for (int i = 0, size = list.size(); i < size; i++) {
                 connection.send(packetsRaw[i]);
             }
-            if (flush && connection instanceof ServerGamePacketListenerImpl playerConnection) {
+            if (flushChannel && connection instanceof ServerGamePacketListenerImpl playerConnection) {
                 playerConnection.connection.flushChannel();
             }
         }

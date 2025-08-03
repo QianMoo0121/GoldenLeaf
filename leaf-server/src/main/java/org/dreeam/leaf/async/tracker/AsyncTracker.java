@@ -47,9 +47,8 @@ public final class AsyncTracker {
         EntitySlice[] slices = entities.length <= THREADS * MIN_CHUNK ? slice.chunks(MIN_CHUNK) : slice.splitEvenly(THREADS);
         @SuppressWarnings("unchecked")
         Future<TrackerCtx>[] futures = new Future[slices.length];
-        Long2ReferenceOpenHashMap<NearbyPlayers.TrackedChunk> byChunk = world.moonrise$getNearbyPlayers().byChunk.clone();
         for (int i = 0; i < futures.length; i++) {
-            futures[i] = TRACKER_EXECUTOR.submitOrRun(new TrackerTask(world, slices[i], byChunk));
+            futures[i] = TRACKER_EXECUTOR.submitOrRun(new TrackerTask(world, slices[i]));
         }
         TRACKER_EXECUTOR.unpack();
         world.trackerTask = futures;

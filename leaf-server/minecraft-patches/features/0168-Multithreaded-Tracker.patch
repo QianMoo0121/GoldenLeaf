@@ -28,18 +28,9 @@ However we still recommend to use those packet based NPC plugins,
 e.g. ZNPC Plus, Adyeshach, Fancy NPC, etc.
 
 diff --git a/ca/spottedleaf/moonrise/common/misc/NearbyPlayers.java b/ca/spottedleaf/moonrise/common/misc/NearbyPlayers.java
-index 1b8193587814225c2ef2c5d9e667436eb50ff6c5..f0285e89516a8c3f0adb17bbad90b5453ceb9dbb 100644
+index 1b8193587814225c2ef2c5d9e667436eb50ff6c5..356ec20eff799aa12ed6b4f9e54e8721c50a0068 100644
 --- a/ca/spottedleaf/moonrise/common/misc/NearbyPlayers.java
 +++ b/ca/spottedleaf/moonrise/common/misc/NearbyPlayers.java
-@@ -60,7 +60,7 @@ public final class NearbyPlayers {
- 
-     private final ServerLevel world;
-     private final Reference2ReferenceOpenHashMap<ServerPlayer, TrackedPlayer[]> players = new Reference2ReferenceOpenHashMap<>();
--    private final Long2ReferenceOpenHashMap<TrackedChunk> byChunk = new Long2ReferenceOpenHashMap<>();
-+    public final Long2ReferenceOpenHashMap<TrackedChunk> byChunk = new Long2ReferenceOpenHashMap<>(); // Leaf - Multithreaded tracker - private -> public
-     private final Long2ReferenceOpenHashMap<ReferenceList<ServerPlayer>>[] directByChunk = new Long2ReferenceOpenHashMap[TOTAL_MAP_TYPES];
-     {
-         for (int i = 0; i < this.directByChunk.length; ++i) {
 @@ -164,6 +164,8 @@ public final class NearbyPlayers {
          private int nonEmptyLists;
          private long updateCount;
@@ -89,7 +80,7 @@ index 1b8193587814225c2ef2c5d9e667436eb50ff6c5..f0285e89516a8c3f0adb17bbad90b545
              if (list == null) {
                  throw new IllegalStateException("Does not contain player " + player);
 diff --git a/ca/spottedleaf/moonrise/patches/chunk_system/player/RegionizedPlayerChunkLoader.java b/ca/spottedleaf/moonrise/patches/chunk_system/player/RegionizedPlayerChunkLoader.java
-index bdc1200ef5317fdaf58973bf580b0a672aee800f..20b1186f53c267f69ed7852f5cf3dd2460f8200d 100644
+index bdc1200ef5317fdaf58973bf580b0a672aee800f..8ad88bb648aae8e064895bfb1727ee19be26e6fc 100644
 --- a/ca/spottedleaf/moonrise/patches/chunk_system/player/RegionizedPlayerChunkLoader.java
 +++ b/ca/spottedleaf/moonrise/patches/chunk_system/player/RegionizedPlayerChunkLoader.java
 @@ -344,7 +344,7 @@ public final class RegionizedPlayerChunkLoader {
@@ -107,7 +98,7 @@ index bdc1200ef5317fdaf58973bf580b0a672aee800f..20b1186f53c267f69ed7852f5cf3dd24
                  PlayerChunkSender.sendChunk(this.player.connection, this.world, chunk);
 +                // Leaf start - Multithreaded tracker
 +                if (org.dreeam.leaf.config.modules.async.MultithreadedTracker.enabled) {
-+                    ca.spottedleaf.moonrise.common.misc.NearbyPlayers.TrackedChunk trackedChunk = this.world.moonrise$getNearbyPlayers().getChunk(chunkX, chunkZ);
++                    ca.spottedleaf.moonrise.common.misc.NearbyPlayers.TrackedChunk trackedChunk = chunk.moonrise$getChunkHolder().holderData.nearbyPlayers;
 +                    if (trackedChunk != null) {
 +                        trackedChunk.trackingUpdateCountAtomic.getAndIncrement();
 +                    }
