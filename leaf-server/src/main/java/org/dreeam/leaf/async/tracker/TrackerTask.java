@@ -1,6 +1,8 @@
 package org.dreeam.leaf.async.tracker;
 
-import ca.spottedleaf.moonrise.common.misc.NearbyPlayers;
+import ca.spottedleaf.moonrise.patches.chunk_system.entity.ChunkSystemEntity;
+import ca.spottedleaf.moonrise.patches.chunk_system.level.chunk.ChunkData;
+import ca.spottedleaf.moonrise.patches.entity_tracker.EntityTrackerEntity;
 import net.minecraft.server.level.ChunkMap;
 import net.minecraft.server.level.FullChunkStatus;
 import net.minecraft.server.level.ServerLevel;
@@ -24,7 +26,7 @@ public final class TrackerTask implements Callable<TrackerCtx> {
         final Entity[] raw = entities.array();
         for (int i = entities.start(); i < entities.end(); i++) {
             final Entity entity = raw[i];
-            final ChunkMap.TrackedEntity tracker = ((ca.spottedleaf.moonrise.patches.entity_tracker.EntityTrackerEntity) entity).moonrise$getTrackedEntity();
+            final ChunkMap.TrackedEntity tracker = ((EntityTrackerEntity) entity).moonrise$getTrackedEntity();
             if (tracker == null) {
                 continue;
             }
@@ -32,13 +34,17 @@ public final class TrackerTask implements Callable<TrackerCtx> {
                 ctx.citizensEntity(entity);
                 continue;
             }
-            NearbyPlayers.TrackedChunk trackedChunk = ((ca.spottedleaf.moonrise.patches.chunk_system.entity.ChunkSystemEntity) entity).moonrise$getChunkData().nearbyPlayers;
-            tracker.leafTick(ctx, trackedChunk);
+            ChunkData chunkData = ((ChunkSystemEntity) entity).moonrise$getChunkData();
+            // removed in world if null
+            if (chunkData == null) {
+                continue;
+            }
+            tracker.leafTick(ctx, chunkData.nearbyPlayers);
             boolean flag = false;
             if (tracker.moonrise$hasPlayers()) {
                 flag = true;
             } else {
-                FullChunkStatus status = ((ca.spottedleaf.moonrise.patches.chunk_system.entity.ChunkSystemEntity) entity).moonrise$getChunkStatus();
+                FullChunkStatus status = ((ChunkSystemEntity) entity).moonrise$getChunkStatus();
                 // removed in world if null
                 if (status != null && status.isOrAfter(FullChunkStatus.ENTITY_TICKING)) {
                     flag = true;
