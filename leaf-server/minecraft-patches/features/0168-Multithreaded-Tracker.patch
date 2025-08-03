@@ -1354,7 +1354,7 @@ index 42ad600c6a5cb20e1d820f169f6a1a17ef3a5195..e4241cc11ac256a6d759c2aebbf9b0f6
  
          return this.cachedValue;
 diff --git a/net/minecraft/world/entity/ai/attributes/AttributeMap.java b/net/minecraft/world/entity/ai/attributes/AttributeMap.java
-index 0ac398b8b10aae5e67a797b2991c66874003f282..63c951113e8ac592c8367cc62d3112b133e99455 100644
+index 0ac398b8b10aae5e67a797b2991c66874003f282..24fe3663b65f591ed2127cd360634264624174a4 100644
 --- a/net/minecraft/world/entity/ai/attributes/AttributeMap.java
 +++ b/net/minecraft/world/entity/ai/attributes/AttributeMap.java
 @@ -15,9 +15,11 @@ import net.minecraft.resources.ResourceLocation;
@@ -1425,7 +1425,7 @@ index 0ac398b8b10aae5e67a797b2991c66874003f282..63c951113e8ac592c8367cc62d3112b1
 +
 +    public int[] getAttributesToSyncIds() {
 +        int[] clone = attributesToSync.inner.toIntArray();
-+        this.attributesToUpdate.clear();
++        this.attributesToSync.clear();
 +        return clone;
 +    }
 +    // Leaf end - Multithreaded tracker
