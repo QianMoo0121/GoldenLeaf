@@ -1,6 +1,5 @@
 package org.dreeam.leaf.async.tracker;
 
-import ca.spottedleaf.moonrise.common.misc.NearbyPlayers;
 import ca.spottedleaf.moonrise.patches.chunk_system.entity.ChunkSystemEntity;
 import ca.spottedleaf.moonrise.patches.entity_tracker.EntityTrackerEntity;
 import io.papermc.paper.event.player.PlayerTrackEntityEvent;
@@ -11,10 +10,7 @@ import it.unimi.dsi.fastutil.objects.ReferenceArrayList;
 import net.minecraft.core.Holder;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.*;
-import net.minecraft.server.level.ChunkMap;
-import net.minecraft.server.level.FullChunkStatus;
-import net.minecraft.server.level.ServerLevel;
-import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.level.*;
 import net.minecraft.server.network.ServerGamePacketListenerImpl;
 import net.minecraft.server.network.ServerPlayerConnection;
 import net.minecraft.world.entity.Entity;
@@ -36,23 +32,22 @@ import java.util.List;
 import java.util.Set;
 
 public final class TrackerCtx {
-    private final Reference2ReferenceOpenHashMap<ServerPlayerConnection, ReferenceArrayList<Packet<? super ClientGamePacketListener>>> packets;
+    private final Reference2ReferenceOpenHashMap<ServerPlayerConnection, ReferenceArrayList<Packet<? super ClientGamePacketListener>>> packets = new Reference2ReferenceOpenHashMap<>();
     private final ServerLevel world;
     private final ObjectArrayList<ServerPlayer> playerVelocity = new ObjectArrayList<>();
     private final ObjectArrayList<ItemFrame> bukkitItemFrames = new ObjectArrayList<>();
     private final ObjectArrayList<BossEvent> witherBosses = new ObjectArrayList<>();
     private final ObjectArrayList<PaperStopSeen> paperStopSeen = new ObjectArrayList<>();
-    private final ObjectArrayList<PaperStartSeen> paperStartSeen = new ObjectArrayList<>();
+    private final ObjectArrayList<StartSeen> startSeen = new ObjectArrayList<>();
     private final ObjectArrayList<Entity> pluginEntity = new ObjectArrayList<>();
     private final ReferenceArrayList<SyncAttributes> syncAttributes = ReferenceArrayList.wrap(new SyncAttributes[8], 0);
 
     private record BossEvent(WitherBoss witherBoss, ObjectArrayList<ServerPlayer> add, ObjectArrayList<ServerPlayer> remove) {}
     private record PaperStopSeen(Entity e, ObjectArrayList<ServerPlayerConnection> q) {}
-    private record PaperStartSeen(Entity e, ObjectArrayList<ServerPlayerConnection> q) {}
+    private record StartSeen(Entity e, ObjectArrayList<ServerPlayerConnection> q, Packet<? super ClientGamePacketListener> addEntityPacket) {}
     private record SyncAttributes(LivingEntity e, ServerPlayerConnection[] seenBy) {}
 
     public TrackerCtx(ServerLevel world) {
-        this.packets = new Reference2ReferenceOpenHashMap<>();
         this.world = world;
     }
 
@@ -77,14 +72,15 @@ public final class TrackerCtx {
         }
     }
 
-    public void startSeenByPlayer(ServerPlayerConnection connection, Entity entity) {
-        if (paperStartSeen.isEmpty()) {
-            paperStartSeen.add(new PaperStartSeen(entity, new ObjectArrayList<>()));
+    public void startSeenByPlayer(ServerPlayerConnection connection, Entity entity, ServerEntity serverEntity) {
+        StartSeen elem = new StartSeen(entity, new ObjectArrayList<>(), entity.getAddEntityPacket(serverEntity));
+        if (startSeen.isEmpty()) {
+            startSeen.add(elem);
         }
-        if (!paperStartSeen.getLast().e.equals(entity)) {
-            paperStartSeen.add(new PaperStartSeen(entity, new ObjectArrayList<>()));
+        if (!startSeen.getLast().e.equals(entity)) {
+            startSeen.add(elem);
         }
-        paperStartSeen.getLast().q.add(connection);
+        startSeen.getLast().q.add(connection);
         if (entity instanceof WitherBoss witherBoss) {
             if (witherBosses.isEmpty()) {
                 witherBosses.add(new BossEvent(witherBoss, new ObjectArrayList<>(), new ObjectArrayList<>()));
@@ -121,7 +117,7 @@ public final class TrackerCtx {
         playerVelocity.addAll(other.playerVelocity);
         bukkitItemFrames.addAll(other.bukkitItemFrames);
         paperStopSeen.addAll(other.paperStopSeen);
-        paperStartSeen.addAll(other.paperStartSeen);
+        startSeen.addAll(other.startSeen);
         pluginEntity.addAll(other.pluginEntity);
         if (other.packets.isEmpty()) {
             return;
@@ -140,11 +136,21 @@ public final class TrackerCtx {
                 handlePluginEntity(entity);
             }
         }
-        if (!paperStartSeen.isEmpty()) {
-            for (PaperStartSeen startSeen : paperStartSeen) {
-                handleStartTrack(startSeen);
-            }
+
+        SyncAttributes[] raw = syncAttributes.elements();
+        for (int i = 0, size = syncAttributes.size(); i < size; i++) {
+            handleSyncAttribute(raw[i]);
         }
+
+        if (!startSeen.isEmpty()) {
+            Reference2ReferenceOpenHashMap<ServerPlayerConnection, ReferenceArrayList<Packet<? super ClientGamePacketListener>>> startTrackPackets = new Reference2ReferenceOpenHashMap<>();
+            for (StartSeen startSeen : startSeen) {
+                handleStartTrack(startSeen, startTrackPackets);
+            }
+            sendPackets(world, startTrackPackets, flush);
+        }
+        sendPackets(world, packets, flush);
+
         if (!paperStopSeen.isEmpty()) {
             for (PaperStopSeen stopSeen : paperStopSeen) {
                 for (ServerPlayerConnection connection : stopSeen.q) {
@@ -156,12 +162,6 @@ public final class TrackerCtx {
             }
         }
 
-        sendPackets(world, packets, flush);
-
-        SyncAttributes[] raw = syncAttributes.elements();
-        for (int i = 0, size = syncAttributes.size(); i < size; i++) {
-            handleSyncAttribute(raw[i]);
-        }
         if (!playerVelocity.isEmpty()) {
             for (ServerPlayer player : playerVelocity) {
                 handlePlayerVelocity(player);
@@ -212,34 +212,37 @@ public final class TrackerCtx {
         }
         ClientboundUpdateAttributesPacket packet = new ClientboundUpdateAttributesPacket(e.getId(), attributes);
         for (ServerPlayerConnection connection : syncAttribute.seenBy) {
-            send(connection, packet);
+            this.send(connection, packet);
         }
         if (p != null) {
-            send(p.connection, packet);
+            this.send(p.connection, packet);
         }
     }
 
-    private void handleStartTrack(PaperStartSeen startSeen) {
-        ObjectArrayList<Packet<? super ClientGamePacketListener>> list = new ObjectArrayList<>();
+    private void handleStartTrack(StartSeen startSeen, Reference2ReferenceOpenHashMap<ServerPlayerConnection, ReferenceArrayList<Packet<? super ClientGamePacketListener>>> startTrackPackets) {
         ChunkMap.TrackedEntity trackedEntity = startSeen.e.moonrise$getTrackedEntity();
-        if (trackedEntity != null) {
-            boolean flag = trackedEntity.serverEntity.leafSendPairingData(list);
-            ClientboundBundlePacket packet = new ClientboundBundlePacket(list);
-            for (ServerPlayerConnection connection : startSeen.q) {
-                if (PlayerTrackEntityEvent.getHandlerList().getRegisteredListeners().length != 0
-                    && !new PlayerTrackEntityEvent(
-                    connection.getPlayer().getBukkitEntity(),
-                    startSeen.e.getBukkitEntity()
-                ).callEvent()) {
-                    send(connection, new ClientboundRemoveEntitiesPacket(startSeen.e.getId()));
+        ObjectArrayList<Packet<? super ClientGamePacketListener>> list = new ObjectArrayList<>(4);
+        if (trackedEntity == null) {
+            return;
+        }
+        list.add(startSeen.addEntityPacket);
+        boolean flag = trackedEntity.serverEntity.leafSendPairingData(list);
+        ClientboundBundlePacket packet = new ClientboundBundlePacket(list);
+        for (ServerPlayerConnection connection : startSeen.q) {
+            if (PlayerTrackEntityEvent.getHandlerList().getRegisteredListeners().length != 0
+                && !new PlayerTrackEntityEvent(
+                connection.getPlayer().getBukkitEntity(),
+                startSeen.e.getBukkitEntity()
+            ).callEvent()) {
+                this.send(connection, new ClientboundRemoveEntitiesPacket(startSeen.e.getId()));
+            } else {
+                if (flag && connection.getPlayer() == startSeen.e) {
+                    var copy = new ObjectArrayList<>(list);
+                    copy.add(new ClientboundUpdateAttributesPacket(startSeen.e.getId(), List.of(connection.getPlayer().getBukkitEntity().getScaledMaxHealth())));
+                    var mod = new ClientboundBundlePacket(copy);
+                    startTrackPackets.computeIfAbsent(connection, x -> ReferenceArrayList.wrap(new Packet[16], 0)).add(mod);
                 } else {
-                    if (flag && connection.getPlayer() == startSeen.e) {
-                        var copy = new ObjectArrayList<>(list);
-                        copy.add(new ClientboundUpdateAttributesPacket(startSeen.e.getId(), List.of(connection.getPlayer().getBukkitEntity().getScaledMaxHealth())));
-                        send(connection, new ClientboundBundlePacket(copy));
-                    } else {
-                        send(connection, packet);
-                    }
+                    startTrackPackets.computeIfAbsent(connection, x -> ReferenceArrayList.wrap(new Packet[16], 0)).add(packet);
                 }
             }
         }
@@ -300,7 +303,7 @@ public final class TrackerCtx {
                     //noinspection unchecked
                     Packet<? super ClientGamePacketListener> updatePacket = (Packet<? super ClientGamePacketListener>) savedData.getUpdatePacket(mapId, serverPlayer);
                     if (updatePacket != null) {
-                        send(serverPlayer.connection, updatePacket);
+                        this.send(serverPlayer.connection, updatePacket);
                     }
                 }
             }

@@ -1,8 +1,6 @@
 package org.dreeam.leaf.async.tracker;
 
-import ca.spottedleaf.moonrise.common.misc.NearbyPlayers;
 import ca.spottedleaf.moonrise.patches.chunk_system.level.entity.server.ServerEntityLookup;
-import it.unimi.dsi.fastutil.longs.Long2ReferenceOpenHashMap;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;

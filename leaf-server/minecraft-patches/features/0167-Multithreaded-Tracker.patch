@@ -595,7 +595,7 @@ index f106373ef3ac4a8685c2939c9e8361688a285913..7df467924d029d6e42b1d0b039cb9272
          if (!this.players.isEmpty()) {
              for (ServerPlayer serverPlayer : Lists.newArrayList(this.players)) {
 diff --git a/net/minecraft/server/level/ServerEntity.java b/net/minecraft/server/level/ServerEntity.java
-index cc3af929d1d98eb7dff5740cf556951d2c2b95e6..3a6529dc88f490b5aabaa5346a5543d14e96d9f3 100644
+index cc3af929d1d98eb7dff5740cf556951d2c2b95e6..6805cf8432a61e92f692483d21a4c36c2e8c9c5f 100644
 --- a/net/minecraft/server/level/ServerEntity.java
 +++ b/net/minecraft/server/level/ServerEntity.java
 @@ -57,11 +57,13 @@ public class ServerEntity {
@@ -1082,14 +1082,14 @@ index cc3af929d1d98eb7dff5740cf556951d2c2b95e6..3a6529dc88f490b5aabaa5346a5543d1
  
 +    // Leaf start - Multithreaded tracker
 +    public void leafAddPairing(org.dreeam.leaf.async.tracker.TrackerCtx ctx, ServerPlayer player) {
-+        ctx.startSeenByPlayer(player.connection, this.entity);
++        ctx.startSeenByPlayer(player.connection, this.entity, this);
 +    }
 +    // Leaf end - Multithreaded tracker
 +
      public void sendPairingData(ServerPlayer player, Consumer<Packet<ClientGamePacketListener>> consumer) {
          if (this.entity.isRemoved()) {
              // CraftBukkit start - Remove useless error spam, just return
-@@ -423,6 +676,59 @@ public class ServerEntity {
+@@ -423,6 +676,56 @@ public class ServerEntity {
          }
      }
  
@@ -1102,32 +1102,29 @@ index cc3af929d1d98eb7dff5740cf556951d2c2b95e6..3a6529dc88f490b5aabaa5346a5543d1
 +            // CraftBukkit end
 +        }
 +
-+        Packet<ClientGamePacketListener> addEntityPacket = this.entity.getAddEntityPacket(this);
-+        consumer.add(addEntityPacket);
 +        if (this.trackedDataValues != null) {
 +            consumer.add(new ClientboundSetEntityDataPacket(this.entity.getId(), this.trackedDataValues));
 +        }
 +
 +        boolean flag = false;
 +        if (this.entity instanceof LivingEntity livingEntity) {
-+            Collection<AttributeInstance> syncableAttributes = livingEntity.getAttributes().getSyncableAttributes();
++            List<ClientboundUpdateAttributesPacket.AttributeSnapshot> syncableAttributes = livingEntity.getAttributes().getSyncableAttributesPacket();
 +            if (!syncableAttributes.isEmpty()) {
 +                flag = livingEntity instanceof ServerPlayer && livingEntity.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.MAX_HEALTH) != null;
 +                consumer.add(new ClientboundUpdateAttributesPacket(this.entity.getId(), syncableAttributes));
 +            }
-+            List<Pair<EquipmentSlot, ItemStack>> list = Lists.newArrayList();
-+
-+            for (EquipmentSlot equipmentSlot : EquipmentSlot.VALUES_ARRAY) { // Gale - JettPack - reduce array allocations
-+                ItemStack itemBySlot = livingEntity.getItemBySlot(equipmentSlot);
-+                if (!itemBySlot.isEmpty()) {
-+                    list.add(Pair.of(equipmentSlot, itemBySlot.copy()));
++            if (livingEntity.hasItemInSlots()) {
++                List<Pair<EquipmentSlot, ItemStack>> list = Lists.newArrayList();
++                for (EquipmentSlot equipmentSlot : EquipmentSlot.VALUES_ARRAY) { // Gale - JettPack - reduce array allocations
++                    ItemStack itemBySlot = livingEntity.getItemBySlot(equipmentSlot);
++                    if (!itemBySlot.isEmpty()) {
++                        list.add(Pair.of(equipmentSlot, itemBySlot.copy()));
++                    }
++                }
++                if (!list.isEmpty()) {
++                    consumer.add(new ClientboundSetEquipmentPacket(this.entity.getId(), list, true)); // Paper - data sanitization
 +                }
 +            }
-+
-+            if (!list.isEmpty()) {
-+                consumer.add(new ClientboundSetEquipmentPacket(this.entity.getId(), list, true)); // Paper - data sanitization
-+            }
-+            livingEntity.detectEquipmentUpdates(); // CraftBukkit - SPIGOT-3789: sync again immediately after sending
 +        }
 +
 +        if (!this.entity.getPassengers().isEmpty()) {
@@ -1149,7 +1146,7 @@ index cc3af929d1d98eb7dff5740cf556951d2c2b95e6..3a6529dc88f490b5aabaa5346a5543d1
      public Vec3 getPositionBase() {
          return this.positionCodec.getBase();
      }
-@@ -443,6 +749,7 @@ public class ServerEntity {
+@@ -443,6 +746,7 @@ public class ServerEntity {
          return Mth.unpackDegrees(this.lastSentYHeadRot);
      }
  
@@ -1157,7 +1154,7 @@ index cc3af929d1d98eb7dff5740cf556951d2c2b95e6..3a6529dc88f490b5aabaa5346a5543d1
      private void sendDirtyEntityData() {
          SynchedEntityData entityData = this.entity.getEntityData();
          List<SynchedEntityData.DataValue<?>> list = entityData.packDirty();
-@@ -450,10 +757,12 @@ public class ServerEntity {
+@@ -450,10 +754,12 @@ public class ServerEntity {
              this.trackedDataValues = entityData.getNonDefaultValues();
              this.broadcastAndSend(new ClientboundSetEntityDataPacket(this.entity.getId(), list));
          }
@@ -1170,7 +1167,7 @@ index cc3af929d1d98eb7dff5740cf556951d2c2b95e6..3a6529dc88f490b5aabaa5346a5543d1
                  // CraftBukkit start - Send scaled max health
                  if (this.entity instanceof ServerPlayer serverPlayer) {
                      serverPlayer.getBukkitEntity().injectScaledMaxHealth(attributesToSync, false);
-@@ -462,11 +771,27 @@ public class ServerEntity {
+@@ -462,11 +768,27 @@ public class ServerEntity {
                  this.broadcastAndSend(new ClientboundUpdateAttributesPacket(this.entity.getId(), attributesToSync));
              }
  
@@ -1241,8 +1238,32 @@ index 1556b2d4a758e3a15b6c4468bf994ea3781a4958..581791bf2892715543f003c36e301e69
          // Paper start - Prevent teleporting dead entities
          if (this.player.isRemoved()) {
              LOGGER.info("Attempt to teleport removed player {} restricted", player.getScoreboardName());
+diff --git a/net/minecraft/world/entity/EntityEquipment.java b/net/minecraft/world/entity/EntityEquipment.java
+index 90814ad07a2686c5a274860395f5aca29cc3bf13..916a14eb624a7aaab7b7ce668facfef64516e109 100644
+--- a/net/minecraft/world/entity/EntityEquipment.java
++++ b/net/minecraft/world/entity/EntityEquipment.java
+@@ -37,11 +37,17 @@ public class EntityEquipment {
+     }
+ 
+     public boolean isEmpty() {
+-        for (ItemStack itemStack : this.items.values()) {
+-            if (!itemStack.isEmpty()) {
++        // Leaf start - Multithreaded tracker
++        if (this.items.isEmpty()) {
++            return true;
++        }
++        for (int i = 0; i < EquipmentSlot.VALUES_ARRAY.length; i++) {
++            ItemStack itemStack = this.items.get(EquipmentSlot.VALUES_ARRAY[i]);
++            if (itemStack != null && !itemStack.isEmpty()) {
+                 return false;
+             }
+         }
++        // Leaf end - Multithreaded tracker
+ 
+         return true;
+     }
 diff --git a/net/minecraft/world/entity/LivingEntity.java b/net/minecraft/world/entity/LivingEntity.java
-index 4d4efd979c4478c1571e7044f639afe08a7118d6..ec5bc20c0c3ef938d47cac138b79c13dad121f17 100644
+index 4d4efd979c4478c1571e7044f639afe08a7118d6..53c620840391a207a52892b0ceec32da02c0e4e6 100644
 --- a/net/minecraft/world/entity/LivingEntity.java
 +++ b/net/minecraft/world/entity/LivingEntity.java
 @@ -370,6 +370,7 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
@@ -1272,6 +1293,19 @@ index 4d4efd979c4478c1571e7044f639afe08a7118d6..ec5bc20c0c3ef938d47cac138b79c13d
      }
  
      protected void onAttributeUpdated(Holder<Attribute> attribute) {
+@@ -2916,6 +2917,12 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+         return this.equipment.get(slot);
+     }
+ 
++    // Leaf start - Multithreaded tracker
++    public boolean hasItemInSlots() {
++        return !this.equipment.isEmpty();
++    }
++    // Leaf end - Multithreaded tracker
++
+     public void setItemSlot(EquipmentSlot slot, ItemStack stack) {
+     // Paper start
+         this.setItemSlot(slot, stack, false);
 diff --git a/net/minecraft/world/entity/ai/attributes/Attribute.java b/net/minecraft/world/entity/ai/attributes/Attribute.java
 index f8419dde44ebc7324e783f8bee42132d5ec973c3..d7eef96e12c738cd06a8e16efe48b7673f2a8608 100644
 --- a/net/minecraft/world/entity/ai/attributes/Attribute.java
@@ -1345,7 +1379,7 @@ index 42ad600c6a5cb20e1d820f169f6a1a17ef3a5195..e4241cc11ac256a6d759c2aebbf9b0f6
  
          return this.cachedValue;
 diff --git a/net/minecraft/world/entity/ai/attributes/AttributeMap.java b/net/minecraft/world/entity/ai/attributes/AttributeMap.java
-index 0ac398b8b10aae5e67a797b2991c66874003f282..24fe3663b65f591ed2127cd360634264624174a4 100644
+index 0ac398b8b10aae5e67a797b2991c66874003f282..66ba6b89b1101be7b9623975dbd53b7d3f5adad4 100644
 --- a/net/minecraft/world/entity/ai/attributes/AttributeMap.java
 +++ b/net/minecraft/world/entity/ai/attributes/AttributeMap.java
 @@ -15,9 +15,11 @@ import net.minecraft.resources.ResourceLocation;
@@ -1377,7 +1411,7 @@ index 0ac398b8b10aae5e67a797b2991c66874003f282..24fe3663b65f591ed2127cd360634264
      private void onAttributeModified(AttributeInstance instance) {
          this.attributesToUpdate.add(instance);
          if (instance.getAttribute().value().isClientSyncable() && (entity == null || entity.shouldSendAttribute(instance.getAttribute().value()))) { // Purpur - Ridables
-@@ -39,21 +42,69 @@ public class AttributeMap {
+@@ -39,21 +42,93 @@ public class AttributeMap {
          }
      }
  
@@ -1402,12 +1436,12 @@ index 0ac398b8b10aae5e67a797b2991c66874003f282..24fe3663b65f591ed2127cd360634264
 +        var clone = it.unimi.dsi.fastutil.objects.ReferenceArraySet.ofUnchecked(attributesToUpdate.toArray(EMPTY_ATTRIBUTE_INSTANCE));
 +        this.attributesToUpdate.clear();
 +        return clone;
-+    }
-+
-+    public boolean attributeDirty() {
-+        return !attributesToSync.isEmpty();
      }
  
++    public boolean attributeDirty() {
++        return !attributesToSync.isEmpty();
++    }
++
 +    public int[] getAttributesToUpdateIds() {
 +        int[] clone = attributesToUpdate.inner.toIntArray();
 +        this.attributesToUpdate.clear();
@@ -1432,7 +1466,31 @@ index 0ac398b8b10aae5e67a797b2991c66874003f282..24fe3663b65f591ed2127cd360634264
 +        }
 +        return list;
 +        // Leaf end - Multithreaded tracker - remove stream
++    }
++
++    // Leaf start - Multithreaded tracker
++    public List<net.minecraft.network.protocol.game.ClientboundUpdateAttributesPacket.AttributeSnapshot> getSyncableAttributesPacket() {
++        List<net.minecraft.network.protocol.game.ClientboundUpdateAttributesPacket.AttributeSnapshot> list = new ArrayList<>(attributes.size());
++        if (attributes instanceof org.dreeam.leaf.util.map.AttributeInstanceArrayMap map) {
++            for (AttributeInstance instance : map.elements()) {
++                if (instance != null && instance.getAttribute().value().isClientSyncable() && (entity == null || entity.shouldSendAttribute(instance.getAttribute().value()))) { // Purpur - Ridables
++                    list.add(new net.minecraft.network.protocol.game.ClientboundUpdateAttributesPacket.AttributeSnapshot(
++                        instance.getAttribute(), instance.getBaseValue(), instance.getModifiers()
++                    ));
++                }
++            }
++        } else {
++            for (AttributeInstance instance : attributes.values()) {
++                if (instance != null && instance.getAttribute().value().isClientSyncable() && (entity == null || entity.shouldSendAttribute(instance.getAttribute().value()))) { // Purpur - Ridables
++                    list.add(new net.minecraft.network.protocol.game.ClientboundUpdateAttributesPacket.AttributeSnapshot(
++                        instance.getAttribute(), instance.getBaseValue(), instance.getModifiers()
++                    ));
++                }
++            }
++        }
++        return list;
      }
++    // Leaf end - Multithreaded tracker
  
      @Nullable
      public AttributeInstance getInstance(Holder<Attribute> attribute) {
