@@ -73,11 +73,12 @@ public final class TrackerCtx {
     }
 
     public void startSeenByPlayer(ServerPlayerConnection connection, Entity entity, ServerEntity serverEntity) {
-        StartSeen elem = new StartSeen(entity, new ObjectArrayList<>(), entity.getAddEntityPacket(serverEntity));
         if (startSeen.isEmpty()) {
+            StartSeen elem = new StartSeen(entity, new ObjectArrayList<>(), entity.getAddEntityPacket(serverEntity));
             startSeen.add(elem);
         }
         if (!startSeen.getLast().e.equals(entity)) {
+            StartSeen elem = new StartSeen(entity, new ObjectArrayList<>(), entity.getAddEntityPacket(serverEntity));
             startSeen.add(elem);
         }
         startSeen.getLast().q.add(connection);
