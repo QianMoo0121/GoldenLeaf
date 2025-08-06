@@ -131,21 +131,32 @@ public final class TrackerCtx {
             }
         }
 
-        SyncAttributes[] raw = syncAttributes.elements();
-        for (int i = 0, size = syncAttributes.size(); i < size; i++) {
-            handleSyncAttribute(raw[i]);
+        Reference2ReferenceOpenHashMap<ServerPlayerConnection, ReferenceArrayList<Packet<?>>> prior = new Reference2ReferenceOpenHashMap<>();
+
+        if (!playerVelocity.isEmpty()) {
+            for (int i = 0, s = playerVelocity.size(); i < s; i++) {
+                ServerPlayer player = playerVelocity.get(i);
+                if (!handlePlayerVelocity(player, prior)) {
+                    playerVelocity.set(i, null);
+                }
+            }
         }
 
         if (!startSeen.isEmpty()) {
-            Reference2ReferenceOpenHashMap<ServerPlayerConnection, ReferenceArrayList<Packet<?>>> startTrackPackets = new Reference2ReferenceOpenHashMap<>();
             for (StartSeen startSeen : startSeen) {
-                handleStartTrack(startSeen, startTrackPackets);
+                handleStartTrack(startSeen, prior);
             }
-            sendPackets(world, startTrackPackets);
         }
+
+        sendPackets(world, prior);
 
         for (Reference2ReferenceOpenHashMap<ServerPlayerConnection, ReferenceArrayList<Packet<?>>> otherPackets : other) {
             sendPackets(world, otherPackets);
+        }
+
+        SyncAttributes[] raw = syncAttributes.elements();
+        for (int i = 0, size = syncAttributes.size(); i < size; i++) {
+            handleSyncAttribute(raw[i]);
         }
         sendPackets(world, this.packets);
 
@@ -162,7 +173,9 @@ public final class TrackerCtx {
 
         if (!playerVelocity.isEmpty()) {
             for (ServerPlayer player : playerVelocity) {
-                handlePlayerVelocity(player);
+                if (player != null) {
+                    handlePlayerVelocityPost(player);
+                }
             }
         }
         if (!itemFrames.isEmpty()) {
@@ -217,7 +230,7 @@ public final class TrackerCtx {
         }
     }
 
-    private void handleStartTrack(StartSeen startSeen, Reference2ReferenceOpenHashMap<ServerPlayerConnection, ReferenceArrayList<Packet<?>>> startTrackPackets) {
+    private void handleStartTrack(StartSeen startSeen, Reference2ReferenceOpenHashMap<ServerPlayerConnection, ReferenceArrayList<Packet<?>>> prior) {
         ChunkMap.TrackedEntity trackedEntity = startSeen.e.moonrise$getTrackedEntity();
         ObjectArrayList<Packet<? super ClientGamePacketListener>> list = new ObjectArrayList<>(4);
         if (trackedEntity == null) {
@@ -238,9 +251,9 @@ public final class TrackerCtx {
                     var copy = new ObjectArrayList<>(list);
                     copy.add(new ClientboundUpdateAttributesPacket(startSeen.e.getId(), List.of(connection.getPlayer().getBukkitEntity().getScaledMaxHealth())));
                     var modified = new ClientboundBundlePacket(copy);
-                    startTrackPackets.computeIfAbsent(connection, INIT_PACKET_LIST).add(modified);
+                    prior.computeIfAbsent(connection, INIT_PACKET_LIST).add(modified);
                 } else {
-                    startTrackPackets.computeIfAbsent(connection, INIT_PACKET_LIST).add(packet);
+                    prior.computeIfAbsent(connection, INIT_PACKET_LIST).add(packet);
                 }
             }
         }
@@ -266,10 +279,14 @@ public final class TrackerCtx {
         }
     }
 
-    private void handlePlayerVelocity(ServerPlayer player) {
+    private boolean handlePlayerVelocity(ServerPlayer player, Reference2ReferenceOpenHashMap<ServerPlayerConnection, ReferenceArrayList<Packet<?>>> prior) {
         if (!world.equals(player.level())) {
-            return;
+            return false;
         }
+        if (!player.hurtMarked) {
+            return false;
+        }
+        player.hurtMarked = false;
         boolean cancelled = false;
 
         org.bukkit.entity.Player player1 = player.getBukkitEntity();
@@ -282,18 +299,32 @@ public final class TrackerCtx {
             player1.setVelocity(event.getVelocity());
         }
         if (cancelled) {
+            return false;
+        }
+        ChunkMap.TrackedEntity trackedEntity = player.moonrise$getTrackedEntity();
+        if (trackedEntity == null) {
+            return false;
+        }
+        prior.computeIfAbsent(player.connection, INIT_PACKET_LIST).add(new ClientboundSetEntityMotionPacket(player));
+        return true;
+    }
+
+    private void handlePlayerVelocityPost(ServerPlayer player) {
+        if (!world.equals(player.level())) {
             return;
         }
-        player.hurtMarked = false;
         ChunkMap.TrackedEntity trackedEntity = player.moonrise$getTrackedEntity();
         if (trackedEntity == null) {
             return;
         }
+        ServerPlayerConnection[] seenBy = trackedEntity.seenBy();
+        if (seenBy.length == 0) {
+            return;
+        }
         ClientboundSetEntityMotionPacket packet = new ClientboundSetEntityMotionPacket(player);
-        for (ServerPlayerConnection serverPlayerConnection : trackedEntity.seenBy()) {
+        for (ServerPlayerConnection serverPlayerConnection : seenBy) {
             send(serverPlayerConnection, packet);
         }
-        send(player.connection, packet);
     }
 
     private void handleItemFrame(ItemFrame itemFrame) {
