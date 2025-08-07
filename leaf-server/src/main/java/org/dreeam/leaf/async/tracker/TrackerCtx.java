@@ -36,7 +36,6 @@ public final class TrackerCtx {
     public static final Reference2ReferenceFunction<ServerPlayerConnection, ReferenceArrayList<Packet<?>>> INIT_PACKET_LIST = x -> ReferenceArrayList.wrap(new Packet[16], 0);
     private final Reference2ReferenceOpenHashMap<ServerPlayerConnection, ReferenceArrayList<Packet<?>>> packets = new Reference2ReferenceOpenHashMap<>();
     private final ServerLevel world;
-    private final ObjectArrayList<ServerPlayer> playerVelocity = new ObjectArrayList<>();
     private final ObjectArrayList<ItemFrame> itemFrames = new ObjectArrayList<>();
     private final ObjectArrayList<BossEvent> witherBosses = new ObjectArrayList<>();
     private final ObjectArrayList<PaperStopSeen> paperStopSeen = new ObjectArrayList<>();
@@ -103,10 +102,6 @@ public final class TrackerCtx {
         itemFrames.add(itemFrame);
     }
 
-    public void playerVelocity(ServerPlayer player) {
-        playerVelocity.add(player);
-    }
-
     public void citizensEntity(Entity entity) {
         pluginEntity.add(entity);
     }
@@ -116,7 +111,6 @@ public final class TrackerCtx {
     }
 
     Reference2ReferenceOpenHashMap<ServerPlayerConnection, ReferenceArrayList<Packet<?>>> join(TrackerCtx other) {
-        playerVelocity.addAll(other.playerVelocity);
         itemFrames.addAll(other.itemFrames);
         paperStopSeen.addAll(other.paperStopSeen);
         startSeen.addAll(other.startSeen);
@@ -132,15 +126,6 @@ public final class TrackerCtx {
         }
 
         Reference2ReferenceOpenHashMap<ServerPlayerConnection, ReferenceArrayList<Packet<?>>> prior = new Reference2ReferenceOpenHashMap<>();
-
-        if (!playerVelocity.isEmpty()) {
-            for (int i = 0, s = playerVelocity.size(); i < s; i++) {
-                ServerPlayer player = playerVelocity.get(i);
-                if (!handlePlayerVelocity(player, prior)) {
-                    playerVelocity.set(i, null);
-                }
-            }
-        }
 
         if (!startSeen.isEmpty()) {
             for (StartSeen startSeen : startSeen) {
@@ -167,14 +152,6 @@ public final class TrackerCtx {
                         connection.getPlayer().getBukkitEntity(),
                         stopSeen.e.getBukkitEntity()
                     ).callEvent();
-                }
-            }
-        }
-
-        if (!playerVelocity.isEmpty()) {
-            for (ServerPlayer player : playerVelocity) {
-                if (player != null) {
-                    handlePlayerVelocityPost(player);
                 }
             }
         }
@@ -276,54 +253,6 @@ public final class TrackerCtx {
         }
         if (flag) {
             tracker.serverEntity.sendChanges();
-        }
-    }
-
-    private boolean handlePlayerVelocity(ServerPlayer player, Reference2ReferenceOpenHashMap<ServerPlayerConnection, ReferenceArrayList<Packet<?>>> prior) {
-        if (!world.equals(player.level())) {
-            return false;
-        }
-        if (!player.hurtMarked) {
-            return false;
-        }
-        player.hurtMarked = false;
-        boolean cancelled = false;
-
-        org.bukkit.entity.Player player1 = player.getBukkitEntity();
-        org.bukkit.util.Vector velocity = player1.getVelocity();
-
-        PlayerVelocityEvent event = new PlayerVelocityEvent(player1, velocity.clone());
-        if (!event.callEvent()) {
-            cancelled = true;
-        } else if (velocity != event.getVelocity() && !velocity.equals(event.getVelocity())) {
-            player1.setVelocity(event.getVelocity());
-        }
-        if (cancelled) {
-            return false;
-        }
-        ChunkMap.TrackedEntity trackedEntity = player.moonrise$getTrackedEntity();
-        if (trackedEntity == null) {
-            return false;
-        }
-        prior.computeIfAbsent(player.connection, INIT_PACKET_LIST).add(new ClientboundSetEntityMotionPacket(player));
-        return true;
-    }
-
-    private void handlePlayerVelocityPost(ServerPlayer player) {
-        if (!world.equals(player.level())) {
-            return;
-        }
-        ChunkMap.TrackedEntity trackedEntity = player.moonrise$getTrackedEntity();
-        if (trackedEntity == null) {
-            return;
-        }
-        ServerPlayerConnection[] seenBy = trackedEntity.seenBy();
-        if (seenBy.length == 0) {
-            return;
-        }
-        ClientboundSetEntityMotionPacket packet = new ClientboundSetEntityMotionPacket(player);
-        for (ServerPlayerConnection serverPlayerConnection : seenBy) {
-            send(serverPlayerConnection, packet);
         }
     }
 

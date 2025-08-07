@@ -595,7 +595,7 @@ index f106373ef3ac4a8685c2939c9e8361688a285913..7df467924d029d6e42b1d0b039cb9272
          if (!this.players.isEmpty()) {
              for (ServerPlayer serverPlayer : Lists.newArrayList(this.players)) {
 diff --git a/net/minecraft/server/level/ServerEntity.java b/net/minecraft/server/level/ServerEntity.java
-index cc3af929d1d98eb7dff5740cf556951d2c2b95e6..6805cf8432a61e92f692483d21a4c36c2e8c9c5f 100644
+index cc3af929d1d98eb7dff5740cf556951d2c2b95e6..bb0b59784c688ee0aa9f5a61f4f487c06fda9c8e 100644
 --- a/net/minecraft/server/level/ServerEntity.java
 +++ b/net/minecraft/server/level/ServerEntity.java
 @@ -57,11 +57,13 @@ public class ServerEntity {
@@ -620,7 +620,7 @@ index cc3af929d1d98eb7dff5740cf556951d2c2b95e6..6805cf8432a61e92f692483d21a4c36c
          this.positionCodec.setBase(entity.trackingPosition());
          this.lastSentMovement = entity.getDeltaMovement();
          this.lastSentYRot = Mth.packDegrees(entity.getYRot());
-@@ -105,204 +108,415 @@ public class ServerEntity {
+@@ -105,204 +108,413 @@ public class ServerEntity {
  
      // Paper start - fix desync when a player is added to the tracker
      private boolean forceStateResync;
@@ -1023,9 +1023,7 @@ index cc3af929d1d98eb7dff5740cf556951d2c2b95e6..6805cf8432a61e92f692483d21a4c36c
 +
 +        this.tickCount++;
 +        if (this.entity.hurtMarked) {
-+            if (this.entity instanceof ServerPlayer serverPlayer) {
-+                ctx.playerVelocity(serverPlayer);
-+            } else {
++            if (!(this.entity instanceof ServerPlayer)) {
 +                this.entity.hurtMarked = false;
 +                trackedEntity.leafBroadcastAndSend(ctx, new ClientboundSetEntityMotionPacket(this.entity));
 +            }
@@ -1036,7 +1034,7 @@ index cc3af929d1d98eb7dff5740cf556951d2c2b95e6..6805cf8432a61e92f692483d21a4c36c
      private Stream<Entity> mountedOrDismounted(List<Entity> entities) {
          return Streams.concat(
              this.lastPassengers.stream().filter(entity -> !entities.contains(entity)),
-@@ -356,6 +570,39 @@ public class ServerEntity {
+@@ -356,6 +568,39 @@ public class ServerEntity {
          this.positionCodec.setBase(this.entity.position());
      }
  
@@ -1076,7 +1074,7 @@ index cc3af929d1d98eb7dff5740cf556951d2c2b95e6..6805cf8432a61e92f692483d21a4c36c
      public void removePairing(ServerPlayer player) {
          this.entity.stopSeenByPlayer(player);
          player.connection.send(new ClientboundRemoveEntitiesPacket(this.entity.getId()));
-@@ -368,6 +615,12 @@ public class ServerEntity {
+@@ -368,6 +613,12 @@ public class ServerEntity {
          this.entity.startSeenByPlayer(player);
      }
  
@@ -1089,7 +1087,7 @@ index cc3af929d1d98eb7dff5740cf556951d2c2b95e6..6805cf8432a61e92f692483d21a4c36c
      public void sendPairingData(ServerPlayer player, Consumer<Packet<ClientGamePacketListener>> consumer) {
          if (this.entity.isRemoved()) {
              // CraftBukkit start - Remove useless error spam, just return
-@@ -423,6 +676,56 @@ public class ServerEntity {
+@@ -423,6 +674,56 @@ public class ServerEntity {
          }
      }
  
@@ -1146,7 +1144,7 @@ index cc3af929d1d98eb7dff5740cf556951d2c2b95e6..6805cf8432a61e92f692483d21a4c36c
      public Vec3 getPositionBase() {
          return this.positionCodec.getBase();
      }
-@@ -443,6 +746,7 @@ public class ServerEntity {
+@@ -443,6 +744,7 @@ public class ServerEntity {
          return Mth.unpackDegrees(this.lastSentYHeadRot);
      }
  
@@ -1154,7 +1152,7 @@ index cc3af929d1d98eb7dff5740cf556951d2c2b95e6..6805cf8432a61e92f692483d21a4c36c
      private void sendDirtyEntityData() {
          SynchedEntityData entityData = this.entity.getEntityData();
          List<SynchedEntityData.DataValue<?>> list = entityData.packDirty();
-@@ -450,10 +754,12 @@ public class ServerEntity {
+@@ -450,10 +752,12 @@ public class ServerEntity {
              this.trackedDataValues = entityData.getNonDefaultValues();
              this.broadcastAndSend(new ClientboundSetEntityDataPacket(this.entity.getId(), list));
          }
@@ -1167,7 +1165,7 @@ index cc3af929d1d98eb7dff5740cf556951d2c2b95e6..6805cf8432a61e92f692483d21a4c36c
                  // CraftBukkit start - Send scaled max health
                  if (this.entity instanceof ServerPlayer serverPlayer) {
                      serverPlayer.getBukkitEntity().injectScaledMaxHealth(attributesToSync, false);
-@@ -462,11 +768,27 @@ public class ServerEntity {
+@@ -462,11 +766,27 @@ public class ServerEntity {
                  this.broadcastAndSend(new ClientboundUpdateAttributesPacket(this.entity.getId(), attributesToSync));
              }
  
