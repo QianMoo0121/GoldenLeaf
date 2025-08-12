@@ -9,7 +9,7 @@ This patch didn't cahce SectionPos or BlockPos to chunkKey, since they are mutab
 The JMH benchmark of this patch can be found in SunBox's `CacheChunkKey`
 
 diff --git a/ca/spottedleaf/moonrise/common/misc/NearbyPlayers.java b/ca/spottedleaf/moonrise/common/misc/NearbyPlayers.java
-index f0285e89516a8c3f0adb17bbad90b5453ceb9dbb..be36052efe1003d0e2163e172f29cdedd0161766 100644
+index 356ec20eff799aa12ed6b4f9e54e8721c50a0068..499cad369242f9ad724b3251538d62d8dc8d2ec8 100644
 --- a/ca/spottedleaf/moonrise/common/misc/NearbyPlayers.java
 +++ b/ca/spottedleaf/moonrise/common/misc/NearbyPlayers.java
 @@ -127,7 +127,7 @@ public final class NearbyPlayers {
@@ -191,15 +191,15 @@ index 6e2b2d258e47dcca30a5ad9f4f492598f2bc21fb..6947016aa06670f340b6fb51c74ed33d
  
      public static int getX(long chunkAsLong) {
 diff --git a/net/minecraft/world/waypoints/WaypointTransmitter.java b/net/minecraft/world/waypoints/WaypointTransmitter.java
-index 5d1c933dfa862d0733777d305563a89ea7827f07..c4db265b469cbd37530c3391f99d08ecac59d195 100644
+index a557fb7de5374223e02ad454b7a2aa77d2e24402..7de7b18ebe17a0946357fdf66488a283347eacc6 100644
 --- a/net/minecraft/world/waypoints/WaypointTransmitter.java
 +++ b/net/minecraft/world/waypoints/WaypointTransmitter.java
 @@ -34,7 +34,7 @@ public interface WaypointTransmitter extends Waypoint {
      static boolean isChunkVisible(ChunkPos pos, ServerPlayer player) {
          // Paper start - rewrite chunk system
          final ca.spottedleaf.moonrise.patches.chunk_system.player.RegionizedPlayerChunkLoader.PlayerChunkLoaderData playerChunkLoader = ((ca.spottedleaf.moonrise.patches.chunk_system.player.ChunkSystemServerPlayer)player).moonrise$getChunkLoader();
--        return playerChunkLoader != null && playerChunkLoader.getSentChunksRaw().contains(ca.spottedleaf.moonrise.common.util.CoordinateUtils.getChunkKey(pos));
-+        return playerChunkLoader != null && playerChunkLoader.getSentChunksRaw().contains(pos.longKey); // Leaf - Cache chunk key
-         // Paper end - rewrite chunk system
-     }
- 
+-        long k = ca.spottedleaf.moonrise.common.util.CoordinateUtils.getChunkKey(pos);
++        long k = pos.longKey; // Leaf - Cache chunk key
+         if (playerChunkLoader != null) {
+             it.unimi.dsi.fastutil.longs.LongOpenHashSet s = playerChunkLoader.getSentChunksRaw();
+             if (org.dreeam.leaf.config.modules.async.MultithreadedTracker.enabled) {
