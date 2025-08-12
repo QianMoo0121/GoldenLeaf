@@ -1,14 +1,14 @@
-# 🍃 GoldenLeaf 金叶
+# 🍃 AureateLeaf 金色树叶
 
-GoldenLeaf 是 Leaf 的分支（fork），基于 Leaf 原有的高性能架构进一步升级，融合极致优化与全方位安全防护，为 Minecraft 服务器提供前所未有的稳定与流畅体验。
+AureateLeaf 是 Leaf 的分支（fork），基于 Leaf 原有的高性能架构进一步升级，融合极致优化与全方位安全防护，为 Minecraft 服务器提供前所未有的稳定与流畅体验，同时结合了GoldenFolia的所有优点，致力于做最强的Bukkit核心
 
 
 ## ⚠️ 警告
-GoldenLeaf 作为 Leaf 的增强分支，延续了性能优先的设计理念。切换前请务必备份数据，避免因版本适配问题导致数据损失。我们欢迎所有开发者贡献优化方案，或反馈问题以共同提升项目质量。
+AureateLeaf 作为 Leaf 的增强分支，延续了性能优先的设计理念。切换前请务必备份数据，避免因版本适配问题导致数据损失。我们欢迎所有开发者贡献优化方案，或反馈问题以共同提升项目质量。
 
 
 ## 🌟 核心特性
-基于 Leaf 原有的高性能基础，GoldenLeaf 新增三大核心增强，重新定义 Minecraft 服务器体验：
+基于 Leaf 原有的高性能基础，AureateLeaf 新增三大核心增强，重新定义 Minecraft 服务器体验：
 
 - **突破性 GoldenBooster-V2 优化引擎**  
   搭载自研 GoldenBooster-V2 引擎，性能较传统架构飙升 300%+！通过动态资源调度、毫秒级线程优化和内存压缩技术，即使在万人同时在线的极限场景下，仍能将延迟压降至 10ms 以内，帧率稳定性提升 5 倍以上，彻底告别卡顿与掉帧。
@@ -32,28 +32,18 @@ GoldenLeaf 作为 Leaf 的增强分支，延续了性能优先的设计理念。
 
 
 ## 📊 bStats 统计
-GoldenLeaf 基于 Leaf 生态持续扩展，目前已支持：  
+AureateLeaf 基于 Leaf 生态持续扩展，目前已支持：  
 - 2,841+ 服务器部署  
 - 20,978+ 活跃玩家（数据持续增长中）  
 
 
-## 📬 联系方式
-- Discord：[https://discord.com/invite/gfgAwdSEuM](https://discord.com/invite/gfgAwdSEuM)  
-- QQ 群：619278377  
-
-
 ## 💖 捐赠支持
-如果您认可 GoldenLeaf 的技术革新，欢迎通过 Open Collective 或 Dreeam 的爱发电平台捐赠，助力项目持续迭代！
+如果您认可 AureateLeaf 的技术革新，欢迎通过 Open Collective 或 JMcomic 的爱发电平台捐赠，助力项目持续迭代！
 
 
 ## 📥 下载与安装
-- 官网下载：访问 [www.leafmc.one](www.leafmc.one) 获取最新稳定版  
-- 开发版获取：在 GitHub Action 中获取实时构建版本  
+- 获取：在 GitHub Release 中获取实时正式版本  
 - 环境要求：**Java 21 及以上版本**（推荐 Java 22 以发挥最佳性能）  
-
-
-## 📄 文档中心
-详细配置指南、API 手册及优化教程，请参见：[www.leafmc.one/docs/goldenleaf](www.leafmc.one/docs/goldenleaf)  
 
 
 ## 🔨 构建方法
@@ -103,7 +93,7 @@ GoldenLeaf 继承 Leaf 及上游项目的开源许可证，基于多协议授权
 
 
 ## 📜 致谢
-GoldenLeaf 站在巨人的肩膀上，感谢以下项目的技术积累（包含其部分补丁与架构灵感）：  
+AureateLeaf 站在巨人的肩膀上，感谢以下项目的技术积累（包含其部分补丁与架构灵感）：  
 - Leaf（基础架构）  
 - Gale（性能核心）  
 - Pufferfish、Purpur（功能扩展）  
