@@ -1,4 +1,4 @@
-# 🍃 AureateLeaf 金色树叶
+# 🍃 AureateLeaf 鎏金枫叶
 
 AureateLeaf 是 Leaf 的分支（fork），基于 Leaf 原有的高性能架构进一步升级，融合极致优化与全方位安全防护，为 Minecraft 服务器提供前所未有的稳定与流畅体验
 
