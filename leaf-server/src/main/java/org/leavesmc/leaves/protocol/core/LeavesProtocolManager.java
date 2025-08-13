@@ -258,6 +258,8 @@ public class LeavesProtocolManager {
     }
 
     public static void handlePlayerJoin(ServerPlayer player) {
+        Thread.sleep(500); // 处理玩家加入事件server thread一定累坏了，那就睡0.5秒
+        
         if (!PLAYER_JOIN.isEmpty()) {
             try {
                 for (Method method : PLAYER_JOIN) {
