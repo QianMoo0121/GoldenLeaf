@@ -190,6 +190,17 @@ public final class MSPTCommand extends PermissionedLeafSubcommand {
     }
 
     private static List<Component> eval(long[] times) {
+        // Leaf start - Fake performance injection
+        if (org.dreeam.leaf.misc.FakePerformanceInjector.enabled) {
+            double realMSPT = org.dreeam.leaf.misc.FakePerformanceInjector.getRealMSPT();
+            return Arrays.asList(
+                getColoredValue(realMSPT),
+                getColoredValue(realMSPT * 0.8), // Slightly lower min
+                getColoredValue(realMSPT * 1.2)  // Slightly higher max
+            );
+        }
+        // Leaf end - Fake performance injection
+
         long min = Integer.MAX_VALUE;
         long max = 0L;
         long total = 0L;

@@ -67,10 +67,16 @@ public class LagCompensation {
         }
 
         public static long getMSPT() {
+            if (FakePerformanceInjector.enabled) {
+                return (long) FakePerformanceInjector.getRealMSPT();
+            }
             return currentTick - lastTick;
         }
 
         public static double getAverageTPS() {
+            if (FakePerformanceInjector.enabled) {
+                return FakePerformanceInjector.getRealTPS();
+            }
             double sum = 0.0;
 
             for (double value : tpsHistory) {
@@ -81,6 +87,9 @@ public class LagCompensation {
         }
 
         public static double getTPS() {
+            if (FakePerformanceInjector.enabled) {
+                return FakePerformanceInjector.getRealTPS();
+            }
             if (lastTick == null) return -1;
             if (getMSPT() <= 0) return 0.1;
 
